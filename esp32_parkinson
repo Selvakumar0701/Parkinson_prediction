@@ -1,0 +1,75 @@
+#include <Wire.h>
+#include "DFRobotDFPlayerMini.h"
+#include "MPU6050.h"
+#include "VEGA_MAX30102.h"
+#include <HardwareSerial.h>
+
+VEGA_MAX30102 max30102;
+MPU6050 mpu;
+
+// DFPlayer setup
+HardwareSerial dfSerial(1); // use UART1
+DFRobotDFPlayerMini dfplayer;
+
+// GPIO pins for DFPlayer
+#define DFPLAYER_RX 16
+#define DFPLAYER_TX 17
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(21, 22);  // SDA, SCL
+
+  // Initialize MAX30102
+  if (!max30102.begin()) {
+    Serial.println("❌ MAX30102 not found");
+  } else {
+    Serial.println("✅ MAX30102 Ready");
+  }
+
+  // Initialize MPU6050
+  mpu.initialize();
+  if (!mpu.testConnection()) {
+    Serial.println("❌ MPU6050 not connected");
+  } else {
+    Serial.println("✅ MPU6050 connected");
+  }
+
+  // DFPlayer init
+  dfSerial.begin(9600, SERIAL_8N1, DFPLAYER_RX, DFPLAYER_TX);
+  if (!dfplayer.begin(dfSerial)) {
+    Serial.println("❌ DFPlayer failed");
+  } else {
+    Serial.println("✅ DFPlayer ready");
+    dfplayer.volume(25); // Volume 0~30
+  }
+}
+
+void loop() {
+  uint16_t ir, red;
+  if (max30102.getRawValues(&ir, &red)) {
+    Serial.print("IR: "); Serial.print(ir);
+    Serial.print(" | RED: "); Serial.println(red);
+  }
+
+  int16_t ax, ay, az;
+  mpu.getAcceleration(&ax, &ay, &az);
+
+  float totalAccel = sqrt(ax * ax + ay * ay + az * az);
+  Serial.print("Accel Total: "); Serial.println(totalAccel);
+
+  // Example tremor detection: threshold ~16000 (raw)
+  if (abs(ax) > 16000 || abs(ay) > 16000) {
+    Serial.println("⚠️ Tremor Detected!");
+    dfplayer.play(1); // Play 0001.mp3
+    delay(2000);
+  }
+
+  // Fall detection based on sudden low total acceleration
+  if (totalAccel < 3000) {
+    Serial.println("⚠️ Fall suspected!");
+    dfplayer.play(2); // Play 0002.mp3
+    delay(2000);
+  }
+
+  delay(1000);
+}
